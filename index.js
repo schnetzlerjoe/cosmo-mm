@@ -1,20 +1,54 @@
 import { DirectSecp256k1HdWallet, Registry } from "@cosmjs/proto-signing";
 import { defaultRegistryTypes, SigningStargateClient } from "@cosmjs/stargate";
-import { MsgSwapWithinBatch } from "./liquidity/src/tendermint/liquidity/v1beta1/tx";
+import { MsgSwapWithinBatch } from "./liquidity/src/tendermint/liquidity/v1beta1/tx.js";
 
-const myRegistry = new Registry([
-  ...defaultRegistryTypes,
-  ["/my.custom.MsgXxx", MsgXxx], // Replace with your own type URL and Msg class
-]);
+const registry = new Registry();
+registry.register("/tendermint.liquidity.v1beta1.MsgSwapWithinBatch", MsgSwapWithinBatch)
 
 const mnemonic = process.env.MNEMONIC
+const signer = await DirectSecp256k1HdWallet.fromMnemonic(mnemonic);
+const [account] = await signer.getAccounts();
 
-const signer = await DirectSecp256k1HdWallet.fromMnemonic(
-  mnemonic,
-  { prefix: "myprefix" }, // Replace with your own Bech32 address prefix
-);
 const client = await SigningStargateClient.connectWithSigner(
-  "my.endpoint.com", // Replace with your own RPC endpoint
+  "https://rpc.cosmos.network/",
   signer,
-  { registry: myRegistry },
+  { registry: registry },
 );
+
+console.log(account.address)
+
+const rawMessage = {
+  swapRequesterAddress: account.address.toString(),
+  poolId: "1",
+  swapTypeId: 1,
+  offerCoin: {
+    denom: "uatom",
+    amount: "50000"
+  },
+  demandCoinDenom: "ibc/14F9BC3E44B8A9C1BE1FB08980FAB87034C9905EF17CF2F5008FC085218811CC",
+  offerCoinFee: {
+    denom: "uatom",
+    amount: "75"
+  },
+  orderPrice: "5"
+}
+
+const typeMsg = MsgSwapWithinBatch.fromPartial(rawMessage)
+
+const message = {
+  typeUrl: "/tendermint.liquidity.v1beta1.MsgSwapWithinBatch",
+  value: MsgSwapWithinBatch.fromPartial(rawMessage),
+};
+
+const fee = {
+  gas: "500000",
+  amount: [
+    {
+      amount: "5000",
+      denom: "uatom"
+    }
+  ]
+};
+
+const response = await client.signAndBroadcast(account.address, [message], fee, "Test");
+console.log(response);
